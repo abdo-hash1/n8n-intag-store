@@ -9,11 +9,11 @@ import { RateLimitError } from '../utils/index.js';
 
 /**
  * Default rate limiter
- * 100 requests per 15 minutes
+ * 1000 requests per 15 minutes (increased for development)
  */
 export const defaultRateLimiter = rateLimit({
     windowMs: config.security.rateLimitWindowMs,
-    max: config.security.rateLimitMaxRequests,
+    max: config.isDevelopment ? 1000 : config.security.rateLimitMaxRequests,
     message: {
         success: false,
         message: 'Too many requests, please try again later'
@@ -24,6 +24,29 @@ export const defaultRateLimiter = rateLimit({
         res.status(429).json({
             success: false,
             message: 'Too many requests, please try again later',
+            code: 'RATE_LIMIT_EXCEEDED',
+        });
+    },
+});
+
+/**
+ * Admin rate limiter - more lenient
+ * 500 requests per 5 minutes for admin panel
+ */
+export const adminRateLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: config.isDevelopment ? 2000 : 500,
+    message: {
+        success: false,
+        message: 'Too many admin requests, please try again later'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: () => config.isDevelopment, // Skip rate limiting in development
+    handler: (req, res) => {
+        res.status(429).json({
+            success: false,
+            message: 'Too many admin requests, please try again later',
             code: 'RATE_LIMIT_EXCEEDED',
         });
     },

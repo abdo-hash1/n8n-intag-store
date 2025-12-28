@@ -6,11 +6,12 @@
 
 import { Router } from 'express';
 import { adminController } from '../controllers/index.js';
-import { authenticate, requireAdmin } from '../middleware/index.js';
+import { authenticate, requireAdmin, adminRateLimiter } from '../middleware/index.js';
 
 const router = Router();
 
-// All admin routes require authentication and admin role
+// All admin routes: rate limiting, authentication, and admin role required
+router.use(adminRateLimiter);
 router.use(authenticate);
 router.use(requireAdmin);
 
