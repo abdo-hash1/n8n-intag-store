@@ -1,0 +1,341 @@
+// ===========================================
+// n8n SaaS Platform - Database Schema
+// ===========================================
+// This schema defines all database models as per specification
+// Using SQLite for development (change to PostgreSQL for production)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================
+// USERS TABLE
+// ===========================================
+// Purpose: Store all user account information
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  password          String    // Hashed with bcrypt
+  fullName          String    @map("full_name")
+  phone             String?
+  role              String    @default("user") // user, admin, super_admin, support_agent
+  status            String    @default("active") // active, suspended, deleted
+  emailVerified     Boolean   @default(false) @map("email_verified")
+  
+  // n8n Instance Details
+  instanceUrl       String?   @map("instance_url")
+  containerId       String?   @map("container_id")
+  
+  // Timestamps
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  lastLoginAt       DateTime? @map("last_login_at")
+  
+  // Email preferences
+  emailNotifications Boolean  @default(true) @map("email_notifications")
+  marketingEmails   Boolean   @default(false) @map("marketing_emails")
+  
+  // Relations
+  subscriptions     Subscription[]
+  payments          Payment[]
+  refundRequests    RefundRequest[]
+  supportTickets    SupportTicket[]
+  supportMessages   SupportMessage[]
+  activityLogs      ActivityLog[]
+  
+  // Admin relations (for assigned tickets)
+  assignedTickets   SupportTicket[] @relation("AssignedAdmin")
+  processedRefunds  RefundRequest[] @relation("ProcessedBy")
+
+  @@map("users")
+}
+
+// ===========================================
+// SUBSCRIPTIONS TABLE
+// ===========================================
+// Purpose: Manage subscription lifecycle for each user
+
+model Subscription {
+  id                    String   @id @default(uuid())
+  userId                String   @map("user_id")
+  
+  // Plan Details
+  planType              String   @map("plan_type") // monthly, yearly
+  status                String   @default("active") // active, paused, cancelled, expired, payment_failed, suspended
+  amount                Float    @default(0)
+  currency              String   @default("EGP")
+  
+  // Payment Gateway Info
+  gatewaySubscriptionId String?  @map("gateway_subscription_id")
+  gatewayCustomerId     String?  @map("gateway_customer_id")
+  paymentGateway        String?  @map("payment_gateway") // paymob, fawry, stripe
+  
+  // Billing Dates
+  currentPeriodStart    DateTime @map("current_period_start")
+  currentPeriodEnd      DateTime @map("current_period_end")
+  nextBillingDate       DateTime? @map("next_billing_date")
+  
+  // Pause Information
+  pausedAt              DateTime? @map("paused_at")
+  pauseReason           String?   @map("pause_reason")
+  resumeDate            DateTime? @map("resume_date")
+  
+  // Cancellation Information
+  cancelledAt           DateTime? @map("cancelled_at")
+  cancelReason          String?   @map("cancel_reason")
+  
+  // Proration tracking (for upgrades/downgrades)
+  creditBalance         Float     @default(0) @map("credit_balance")
+  
+  // Timestamps
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments              Payment[]
+  refundRequests        RefundRequest[]
+  activityLogs          ActivityLog[]
+
+  @@map("subscriptions")
+}
+
+// ===========================================
+// PAYMENTS TABLE
+// ===========================================
+// Purpose: Track all payment transactions
+
+model Payment {
+  id                    String    @id @default(uuid())
+  subscriptionId        String    @map("subscription_id")
+  userId                String    @map("user_id")
+  
+  // Gateway Info
+  gatewayTransactionId  String?   @map("gateway_transaction_id")
+  paymentGateway        String    @map("payment_gateway") // paymob, fawry, stripe
+  
+  // Payment Details
+  amount                Float     @default(0)
+  currency              String    @default("EGP")
+  status                String    @default("pending") // success, failed, pending, refunded
+  
+  // Failure Info
+  failureReason         String?   @map("failure_reason")
+  
+  // Refund Info
+  refundedAt            DateTime? @map("refunded_at")
+  refundAmount          Float?    @map("refund_amount")
+  
+  // Timestamps
+  paymentDate           DateTime  @default(now()) @map("payment_date")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  
+  // Invoice
+  invoiceUrl            String?   @map("invoice_url")
+  
+  // Relations
+  subscription          Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refundRequests        RefundRequest[]
+
+  @@map("payments")
+}
+
+// ===========================================
+// REFUND REQUESTS TABLE
+// ===========================================
+// Purpose: Manage refund workflow
+
+model RefundRequest {
+  id                String    @id @default(uuid())
+  userId            String    @map("user_id")
+  subscriptionId    String    @map("subscription_id")
+  paymentId         String    @map("payment_id")
+  
+  // Request Details
+  reason            String
+  additionalDetails String?   @map("additional_details")
+  requestedAmount   Float     @map("requested_amount")
+  
+  // Status
+  status            String    @default("pending") // pending, approved, rejected, processed
+  adminNotes        String?   @map("admin_notes")
+  
+  // Processing
+  processedBy       String?   @map("processed_by")
+  processedAt       DateTime? @map("processed_at")
+  
+  // Timestamps
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription      Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  payment           Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  processedByAdmin  User?        @relation("ProcessedBy", fields: [processedBy], references: [id])
+
+  @@map("refund_requests")
+}
+
+// ===========================================
+// SUPPORT TICKETS TABLE
+// ===========================================
+// Purpose: Customer support system
+
+model SupportTicket {
+  id                String    @id @default(uuid())
+  userId            String    @map("user_id")
+  
+  // Ticket Details
+  subject           String
+  description       String
+  category          String    @default("other") // billing, technical, refund, other
+  priority          String    @default("normal") // low, normal, high, urgent
+  status            String    @default("open") // open, waiting_customer, waiting_admin, resolved, closed
+  
+  // Assignment
+  assignedAdminId   String?   @map("assigned_admin_id")
+  
+  // Timestamps
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  resolvedAt        DateTime? @map("resolved_at")
+  closedAt          DateTime? @map("closed_at")
+  
+  // SLA Tracking
+  firstResponseAt   DateTime? @map("first_response_at")
+  slaBreached       Boolean   @default(false) @map("sla_breached")
+  
+  // Relations
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedAdmin     User?     @relation("AssignedAdmin", fields: [assignedAdminId], references: [id])
+  messages          SupportMessage[]
+
+  @@map("support_tickets")
+}
+
+// ===========================================
+// SUPPORT MESSAGES TABLE
+// ===========================================
+// Purpose: Store ticket conversation history
+
+model SupportMessage {
+  id          String        @id @default(uuid())
+  ticketId    String        @map("ticket_id")
+  userId      String        @map("user_id")
+  
+  // Message Content
+  content     String
+  isFromAdmin Boolean       @default(false) @map("is_from_admin")
+  
+  // Attachments (stored as JSON string)
+  attachments String        @default("[]")
+  
+  // Timestamps
+  createdAt   DateTime      @default(now()) @map("created_at")
+  
+  // Relations
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("support_messages")
+}
+
+// ===========================================
+// ACTIVITY LOG TABLE
+// ===========================================
+// Purpose: Audit trail for all important actions
+
+model ActivityLog {
+  id              String        @id @default(uuid())
+  userId          String?       @map("user_id")
+  subscriptionId  String?       @map("subscription_id")
+  
+  // Action Details
+  action          String        // e.g., 'user_signup', 'payment_success', 'subscription_paused'
+  details         String?       // JSON string for additional data
+  
+  // Request Info
+  ipAddress       String?       @map("ip_address")
+  userAgent       String?       @map("user_agent")
+  
+  // Timestamps
+  createdAt       DateTime      @default(now()) @map("created_at")
+  
+  // Relations
+  user            User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  subscription    Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@map("activity_logs")
+}
+
+// ===========================================
+// EMAIL QUEUE TABLE (for reliable email delivery)
+// ===========================================
+
+model EmailQueue {
+  id          String    @id @default(uuid())
+  to          String
+  subject     String
+  template    String
+  data        String    // JSON string
+  
+  // Status
+  status      String    @default("pending") // pending, sent, failed
+  attempts    Int       @default(0)
+  lastError   String?   @map("last_error")
+  
+  // Timestamps
+  createdAt   DateTime  @default(now()) @map("created_at")
+  sentAt      DateTime? @map("sent_at")
+
+  @@map("email_queue")
+}
+
+// ===========================================
+// WEBHOOK LOGS TABLE (for payment gateway debugging)
+// ===========================================
+
+model WebhookLog {
+  id              String    @id @default(uuid())
+  gateway         String    // paymob, fawry, stripe
+  eventType       String    @map("event_type")
+  payload         String    // JSON string
+  
+  // Processing
+  processed       Boolean   @default(false)
+  processingError String?   @map("processing_error")
+  
+  // Request Info
+  ipAddress       String?   @map("ip_address")
+  headers         String?   // JSON string
+  
+  // Timestamps
+  createdAt       DateTime  @default(now()) @map("created_at")
+  processedAt     DateTime? @map("processed_at")
+
+  @@map("webhook_logs")
+}
+
+// ===========================================
+// SYSTEM SETTINGS TABLE (for admin configuration)
+// ===========================================
+
+model SystemSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String   // JSON string
+  
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}

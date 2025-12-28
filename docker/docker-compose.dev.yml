@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: n8n-saas-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-n8nsaas}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-n8nsaas_password}
+      POSTGRES_DB: ${DB_NAME:-n8n_saas}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-n8nsaas}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - n8n-saas-network
+
+  # Redis for caching and queues (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: n8n-saas-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - n8n-saas-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: n8n-saas-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: "postgresql://${DB_USER:-n8nsaas}:${DB_PASSWORD:-n8nsaas_password}@postgres:5432/${DB_NAME:-n8n_saas}?schema=public"
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key}
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - n8n-saas-network
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: n8n-saas-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - n8n-saas-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  n8n-saas-network:
+    driver: bridge
