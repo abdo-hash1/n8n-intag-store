@@ -93,6 +93,20 @@ router.put('/subscriptions/:subscriptionId', adminController.updateSubscription)
 router.get('/payments', adminController.getPayments);
 
 /**
+ * @route   GET /api/admin/payments/:paymentId
+ * @desc    Get payment details
+ * @access  Admin
+ */
+router.get('/payments/:paymentId', adminController.getPaymentDetails);
+
+/**
+ * @route   POST /api/admin/payments/:paymentId/refund
+ * @desc    Refund a payment
+ * @access  Admin
+ */
+router.post('/payments/:paymentId/refund', adminController.refundPayment);
+
+/**
  * @route   GET /api/admin/tickets
  * @desc    Get all support tickets
  * @access  Admin

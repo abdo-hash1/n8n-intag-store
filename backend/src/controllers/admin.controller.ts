@@ -276,6 +276,52 @@ export async function getPayments(
 }
 
 /**
+ * GET /api/admin/payments/:paymentId
+ * Get payment details
+ */
+export async function getPaymentDetails(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const { paymentId } = req.params;
+        const payment = await adminService.getPaymentById(paymentId);
+        sendSuccess(res, { payment }, 'Payment details retrieved');
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
+ * POST /api/admin/payments/:paymentId/refund
+ * Refund a payment
+ */
+export async function refundPayment(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const { paymentId } = req.params;
+        const { reason, amount } = req.body;
+        const adminId = (req as any).user.id;
+        const ipAddress = req.ip || req.socket.remoteAddress;
+
+        const payment = await adminService.refundPayment(paymentId, {
+            reason,
+            amount,
+            adminId,
+            ipAddress,
+        });
+
+        sendSuccess(res, { payment }, 'Payment refunded successfully');
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
  * GET /api/admin/tickets
  * Get all support tickets
  */

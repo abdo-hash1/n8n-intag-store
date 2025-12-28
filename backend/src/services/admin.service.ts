@@ -419,6 +419,91 @@ class AdminService {
     }
 
     /**
+     * Get payment by ID with user and subscription details
+     */
+    async getPaymentById(paymentId: string) {
+        const payment = await prisma.payment.findUnique({
+            where: { id: paymentId },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        email: true,
+                        fullName: true,
+                        phone: true,
+                    },
+                },
+                subscription: {
+                    select: {
+                        id: true,
+                        planType: true,
+                        status: true,
+                        currentPeriodStart: true,
+                        currentPeriodEnd: true,
+                    },
+                },
+            },
+        });
+
+        if (!payment) {
+            throw new NotFoundError('Payment not found');
+        }
+
+        return payment;
+    }
+
+    /**
+     * Refund a payment
+     */
+    async refundPayment(
+        paymentId: string,
+        data: {
+            reason: string;
+            amount: number;
+            adminId: string;
+            ipAddress?: string;
+        }
+    ) {
+        const payment = await this.getPaymentById(paymentId);
+
+        if (payment.status !== 'success' && payment.status !== 'completed') {
+            throw new BadRequestError('Only successful payments can be refunded');
+        }
+
+        if (data.amount > payment.amount) {
+            throw new BadRequestError('Refund amount cannot exceed payment amount');
+        }
+
+        // Update payment status
+        const updated = await prisma.payment.update({
+            where: { id: paymentId },
+            data: {
+                status: 'refunded',
+                refundAmount: data.amount,
+                refundReason: data.reason,
+                refundedAt: new Date(),
+            },
+        });
+
+        // Log activity
+        await activityLogService.log({
+            userId: data.adminId,
+            action: 'payment_refunded',
+            details: {
+                paymentId,
+                originalAmount: payment.amount,
+                refundAmount: data.amount,
+                reason: data.reason,
+            },
+            ipAddress: data.ipAddress,
+        });
+
+        logger.info(`Payment refunded: ${paymentId} - ${data.amount}`);
+
+        return updated;
+    }
+
+    /**
      * Get system settings
      */
     async getSystemSettings() {
