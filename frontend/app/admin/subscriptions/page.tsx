@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 
 interface Subscription {
     id: string;
@@ -39,11 +40,12 @@ export default function AdminSubscriptionsPage() {
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
     const [statusFilter, setStatusFilter] = useState('');
+    const [planFilter, setPlanFilter] = useState('');
     const limit = 20;
 
     useEffect(() => {
         fetchData();
-    }, [page, statusFilter]);
+    }, [page, statusFilter, planFilter]);
 
     const fetchData = async () => {
         try {
@@ -56,6 +58,7 @@ export default function AdminSubscriptionsPage() {
                 limit: limit.toString(),
             });
             if (statusFilter) params.append('status', statusFilter);
+            if (planFilter) params.append('planType', planFilter);
 
             const [subsRes, statsRes] = await Promise.all([
                 fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/subscriptions?${params}`, {
@@ -152,7 +155,7 @@ export default function AdminSubscriptionsPage() {
 
             {/* Filters */}
             <div className="card p-4">
-                <div className="flex gap-4">
+                <div className="flex gap-4 flex-wrap">
                     <select
                         value={statusFilter}
                         onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
@@ -163,6 +166,15 @@ export default function AdminSubscriptionsPage() {
                         <option value="paused">متوقف</option>
                         <option value="cancelled">ملغى</option>
                         <option value="expired">منتهي</option>
+                    </select>
+                    <select
+                        value={planFilter}
+                        onChange={(e) => { setPlanFilter(e.target.value); setPage(1); }}
+                        className="input w-auto"
+                    >
+                        <option value="">كل الخطط</option>
+                        <option value="monthly">شهري</option>
+                        <option value="yearly">سنوي</option>
                     </select>
                 </div>
             </div>
@@ -222,9 +234,12 @@ export default function AdminSubscriptionsPage() {
                                             {formatDate(sub.currentPeriodEnd)}
                                         </td>
                                         <td className="p-4">
-                                            <button className="btn-ghost px-3 py-1.5 text-sm">
+                                            <Link
+                                                href={`/admin/subscriptions/${sub.id}`}
+                                                className="btn-ghost px-3 py-1.5 text-sm hover:text-primary"
+                                            >
                                                 عرض
-                                            </button>
+                                            </Link>
                                         </td>
                                     </tr>
                                 ))

@@ -125,6 +125,7 @@ class SubscriptionService {
                         id: true,
                         email: true,
                         fullName: true,
+                        phone: true,
                     },
                 },
                 payments: {
@@ -368,15 +369,20 @@ class SubscriptionService {
         page?: number;
         limit?: number;
         status?: string;
+        planType?: string;
         search?: string;
     } = {}) {
-        const { page = 1, limit = 20, status, search } = options;
+        const { page = 1, limit = 20, status, planType, search } = options;
         const skip = (page - 1) * limit;
 
         const where: Record<string, unknown> = {};
 
         if (status) {
             where.status = status;
+        }
+
+        if (planType) {
+            where.planType = planType;
         }
 
         if (search) {

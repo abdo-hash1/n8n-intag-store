@@ -169,12 +169,13 @@ export async function getSubscriptions(
     next: NextFunction
 ): Promise<void> {
     try {
-        const { page, limit, status, search } = req.query;
+        const { page, limit, status, planType, search } = req.query;
 
         const result = await subscriptionService.getAllSubscriptions({
             page: page ? parseInt(page as string) : 1,
             limit: limit ? parseInt(limit as string) : 20,
             status: status as string,
+            planType: planType as string,
             search: search as string,
         });
 
