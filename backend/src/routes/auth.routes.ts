@@ -12,6 +12,7 @@ import {
     refreshTokenValidation,
     authRateLimiter,
     signupRateLimiter,
+    passwordResetRateLimiter,
 } from '../middleware/index.js';
 
 const router = Router();
@@ -50,5 +51,26 @@ router.post('/logout', authenticate, authController.logout);
  * @access  Protected
  */
 router.get('/me', authenticate, authController.getMe);
+
+/**
+ * @route   POST /api/auth/forgot-password
+ * @desc    Request password reset email
+ * @access  Public
+ */
+router.post('/forgot-password', passwordResetRateLimiter, authController.forgotPassword);
+
+/**
+ * @route   GET /api/auth/verify-reset-token
+ * @desc    Verify if a password reset token is valid
+ * @access  Public
+ */
+router.get('/verify-reset-token', authController.verifyResetToken);
+
+/**
+ * @route   POST /api/auth/reset-password
+ * @desc    Reset password using token
+ * @access  Public
+ */
+router.post('/reset-password', passwordResetRateLimiter, authController.resetPassword);
 
 export default router;

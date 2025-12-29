@@ -1,0 +1,1 @@
+{"success":false,"message":"Validation failed","code":"VALIDATION_ERROR","errors":[{"field":"fullName","message":"Full name must be between 2 and 100 characters"},{"field":"phone","message":"Please provide a valid Egyptian phone number"}]}

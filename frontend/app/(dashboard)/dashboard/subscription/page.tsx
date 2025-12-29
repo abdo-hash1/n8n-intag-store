@@ -41,7 +41,8 @@ export default function SubscriptionPage() {
 
             if (response.ok) {
                 const data = await response.json();
-                setSubscription(data.data);
+                // API returns { data: { subscription: {...} } }
+                setSubscription(data.data?.subscription || null);
             }
         } catch (err) {
             setError('فشل في جلب بيانات الاشتراك');
@@ -175,15 +176,19 @@ export default function SubscriptionPage() {
         }
     };
 
-    const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleDateString('ar-EG', {
+    const formatDate = (dateString?: string | null) => {
+        if (!dateString) return '-';
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return '-';
+        return date.toLocaleDateString('ar-EG', {
             year: 'numeric',
             month: 'long',
             day: 'numeric',
         });
     };
 
-    const formatPrice = (amount: number) => {
+    const formatPrice = (amount?: number | null) => {
+        if (amount === undefined || amount === null || isNaN(amount)) return '- ج.م';
         return new Intl.NumberFormat('ar-EG', {
             style: 'currency',
             currency: 'EGP',

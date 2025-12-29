@@ -10,6 +10,8 @@ import healthRoutes from './health.routes.js';
 import adminRoutes from './admin.routes.js';
 import subscriptionRoutes from './subscription.routes.js';
 import supportRoutes from './support.routes.js';
+import paymentRoutes from './payment.routes.js';
+import instanceRoutes from './instance.routes.js';
 
 const router = Router();
 
@@ -27,6 +29,12 @@ router.use('/subscription', subscriptionRoutes);
 
 // Support routes
 router.use('/support', supportRoutes);
+
+// Payment routes
+router.use('/payments', paymentRoutes);
+
+// Instance routes (n8n Docker containers)
+router.use('/instance', instanceRoutes);
 
 // Admin routes
 router.use('/admin', adminRoutes);

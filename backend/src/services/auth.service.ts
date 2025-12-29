@@ -96,6 +96,18 @@ class AuthService {
             ipAddress,
         });
 
+        // Send welcome email and verification email
+        try {
+            const { emailService } = await import('./email.service.js');
+            await emailService.sendWelcome(user.email, user.fullName);
+
+            // Also send email verification
+            const { userService } = await import('./user.service.js');
+            await userService.requestEmailVerification(user.id, ipAddress);
+        } catch (error) {
+            logger.error('Failed to send welcome/verification email:', error);
+        }
+
         logger.info(`New user registered: ${user.email}`);
 
         return {
@@ -261,6 +273,151 @@ class AuthService {
         });
 
         return user;
+    }
+
+    /**
+     * Request password reset
+     * Generates a reset token and sends email
+     */
+    async requestPasswordReset(email: string, ipAddress?: string): Promise<void> {
+        const user = await prisma.user.findUnique({
+            where: { email: email.toLowerCase() },
+            select: { id: true, email: true, fullName: true, status: true },
+        });
+
+        // Always return success to prevent email enumeration
+        if (!user || user.status !== 'active') {
+            logger.info(`Password reset requested for non-existent/inactive email: ${email}`);
+            return;
+        }
+
+        // Generate reset token (use crypto for secure random token)
+        const crypto = await import('crypto');
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+        const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+        // Store hashed token in system settings (or a dedicated table)
+        // Using system settings as a simple key-value store
+        await prisma.systemSetting.upsert({
+            where: { key: `password_reset_${user.id}` },
+            update: {
+                value: JSON.stringify({
+                    tokenHash: resetTokenHash,
+                    expiry: resetTokenExpiry.toISOString(),
+                }),
+            },
+            create: {
+                key: `password_reset_${user.id}`,
+                value: JSON.stringify({
+                    tokenHash: resetTokenHash,
+                    expiry: resetTokenExpiry.toISOString(),
+                }),
+            },
+        });
+
+        // Send email with reset link
+        try {
+            const { emailService } = await import('./email.service.js');
+            await emailService.sendPasswordReset(user.email, user.fullName, resetToken);
+        } catch (error) {
+            logger.error('Failed to send password reset email:', error);
+        }
+
+        // Log activity
+        await activityLogService.log({
+            userId: user.id,
+            action: 'password_reset_requested',
+            details: {},
+            ipAddress,
+        });
+
+        logger.info(`Password reset requested for: ${user.email}`);
+    }
+
+    /**
+     * Verify password reset token
+     */
+    async verifyResetToken(token: string): Promise<{ valid: boolean; userId?: string }> {
+        const crypto = await import('crypto');
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+        // Find matching token in system settings
+        const settings = await prisma.systemSetting.findMany({
+            where: {
+                key: { startsWith: 'password_reset_' },
+            },
+        });
+
+        for (const setting of settings) {
+            try {
+                const data = JSON.parse(setting.value);
+                if (data.tokenHash === tokenHash) {
+                    // Check expiry
+                    if (new Date(data.expiry) < new Date()) {
+                        // Token expired, clean up
+                        await prisma.systemSetting.delete({ where: { id: setting.id } });
+                        return { valid: false };
+                    }
+
+                    const userId = setting.key.replace('password_reset_', '');
+                    return { valid: true, userId };
+                }
+            } catch {
+                continue;
+            }
+        }
+
+        return { valid: false };
+    }
+
+    /**
+     * Reset password with token
+     */
+    async resetPassword(
+        token: string,
+        newPassword: string,
+        ipAddress?: string
+    ): Promise<void> {
+        const { valid, userId } = await this.verifyResetToken(token);
+
+        if (!valid || !userId) {
+            throw new BadRequestError('Invalid or expired reset token');
+        }
+
+        // Get user
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, email: true },
+        });
+
+        if (!user) {
+            throw new BadRequestError('User not found');
+        }
+
+        // Hash new password
+        const hashedPassword = await hashPassword(newPassword);
+
+        // Update password
+        await prisma.user.update({
+            where: { id: userId },
+            data: { password: hashedPassword },
+        });
+
+        // Delete reset token
+        await prisma.systemSetting.deleteMany({
+            where: { key: `password_reset_${userId}` },
+        });
+
+        // Log activity
+        await activityLogService.log({
+            userId,
+            action: 'password_reset_completed',
+            details: {},
+            ipAddress,
+        });
+
+        logger.info(`Password reset completed for: ${user.email}`);
     }
 }
 

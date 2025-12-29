@@ -30,18 +30,14 @@ function CheckoutContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const planId = searchParams.get('plan') || 'monthly';
+    const paymentIdParam = searchParams.get('payment_id');
+    const mockParam = searchParams.get('mock');
     const plan = plans[planId] || plans.monthly;
 
-    const [isProcessing, setIsProcessing] = useState(false);
-    const [paymentMethod, setPaymentMethod] = useState<'card' | 'wallet'>('card');
-    const [cardData, setCardData] = useState({
-        number: '',
-        name: '',
-        expiry: '',
-        cvv: '',
-    });
+    const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
-    const [step, setStep] = useState<'form' | 'processing' | 'success'>('form');
+    const [step, setStep] = useState<'form' | 'processing' | 'success' | 'failed'>('form');
+    const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
 
     const formatPrice = (price: number) => {
         return new Intl.NumberFormat('ar-EG', {
@@ -51,51 +47,41 @@ function CheckoutContent() {
         }).format(price);
     };
 
-    const formatCardNumber = (value: string) => {
-        const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-        const matches = v.match(/\d{4,16}/g);
-        const match = (matches && matches[0]) || '';
-        const parts = [];
-        for (let i = 0, len = match.length; i < len; i += 4) {
-            parts.push(match.substring(i, i + 4));
+    // Handle mock payment completion callback
+    useEffect(() => {
+        if (paymentIdParam && mockParam === 'true') {
+            completeMockPayment(paymentIdParam);
         }
-        return parts.length ? parts.join(' ') : value;
-    };
+    }, [paymentIdParam, mockParam]);
 
-    const formatExpiry = (value: string) => {
-        const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-        if (v.length >= 2) {
-            return v.slice(0, 2) + '/' + v.slice(2, 4);
-        }
-        return v;
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError('');
-
-        // Validate
-        if (paymentMethod === 'card') {
-            if (!cardData.number || cardData.number.replace(/\s/g, '').length < 16) {
-                setError('الرجاء إدخال رقم بطاقة صحيح');
-                return;
-            }
-            if (!cardData.name) {
-                setError('الرجاء إدخال اسم حامل البطاقة');
-                return;
-            }
-            if (!cardData.expiry || cardData.expiry.length < 5) {
-                setError('الرجاء إدخال تاريخ انتهاء صحيح');
-                return;
-            }
-            if (!cardData.cvv || cardData.cvv.length < 3) {
-                setError('الرجاء إدخال رمز CVV صحيح');
-                return;
-            }
-        }
-
+    const completeMockPayment = async (paymentId: string) => {
         setStep('processing');
-        setIsProcessing(true);
+        try {
+            const token = localStorage.getItem('accessToken');
+
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/payments/mock/complete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ paymentId, success: true }),
+            });
+
+            if (!response.ok) {
+                throw new Error('فشل في إتمام الدفع');
+            }
+
+            setStep('success');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'حدث خطأ');
+            setStep('failed');
+        }
+    };
+
+    const handleCheckout = async () => {
+        setError('');
+        setIsLoading(true);
 
         try {
             const token = localStorage.getItem('accessToken');
@@ -106,34 +92,75 @@ function CheckoutContent() {
                 return;
             }
 
-            // Simulate payment processing
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Step 1: Create subscription if needed
+            let subId = subscriptionId;
+            if (!subId) {
+                const subResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/subscription`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        planType: planId,
+                    }),
+                });
 
-            // Create subscription
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/subscription`, {
+                if (!subResponse.ok) {
+                    const data = await subResponse.json();
+                    // Check if they already have a subscription
+                    if (data.message?.includes('already')) {
+                        // Get existing subscription
+                        const meResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/subscription`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (meResponse.ok) {
+                            const meData = await meResponse.json();
+                            subId = meData.data?.subscription?.id;
+                        }
+                    }
+                    if (!subId) {
+                        throw new Error(data.message || 'فشل في إنشاء الاشتراك');
+                    }
+                } else {
+                    const data = await subResponse.json();
+                    subId = data.data?.subscription?.id;
+                }
+                setSubscriptionId(subId!);
+            }
+
+            // Step 2: Create payment intent
+            const paymentResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/payments/create-intent`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
+                    subscriptionId: subId,
                     planType: planId,
-                    paymentGateway: 'mock',
-                    gatewayTransactionId: `MOCK_${Date.now()}`,
                 }),
             });
 
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.message || 'فشل في إنشاء الاشتراك');
+            if (!paymentResponse.ok) {
+                const data = await paymentResponse.json();
+                throw new Error(data.message || 'فشل في إنشاء طلب الدفع');
             }
 
-            setStep('success');
+            const paymentData = await paymentResponse.json();
+            const { paymentUrl } = paymentData.data;
+
+            // Step 3: Redirect to payment gateway or handle mock
+            if (paymentUrl.includes('mock=true') || paymentUrl.includes('/checkout/')) {
+                // Mock payment - redirect within app
+                window.location.href = paymentUrl;
+            } else {
+                // Real Paymob iframe - open in current window
+                window.location.href = paymentUrl;
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'حدث خطأ أثناء معالجة الدفع');
-            setStep('form');
-        } finally {
-            setIsProcessing(false);
+            setIsLoading(false);
         }
     };
 
@@ -152,23 +179,52 @@ function CheckoutContent() {
     if (step === 'success') {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
-                <div className="text-center animate-in max-w-md">
-                    <div className="w-20 h-20 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <svg className="w-10 h-10 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="text-center animate-in max-w-md px-4">
+                    <div className="w-24 h-24 bg-gradient-to-br from-success/20 to-success/5 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <svg className="w-12 h-12 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                     </div>
-                    <h2 className="text-2xl font-bold mb-2">تم الاشتراك بنجاح! 🎉</h2>
-                    <p className="text-muted-foreground mb-6">
+                    <h2 className="text-3xl font-bold mb-3">تم الاشتراك بنجاح! 🎉</h2>
+                    <p className="text-muted-foreground mb-8 text-lg">
                         شكراً لاشتراكك في {plan.nameAr}. يمكنك الآن البدء في استخدام n8n.
                     </p>
-                    <div className="space-y-3">
-                        <Link href="/dashboard" className="btn-primary w-full py-3 block text-center">
-                            الذهاب للوحة التحكم
+                    <div className="space-y-4">
+                        <Link href="/dashboard" className="btn-primary w-full py-4 block text-center text-lg">
+                            🚀 الذهاب للوحة التحكم
                         </Link>
                         <p className="text-sm text-muted-foreground">
-                            سيتم إرسال تفاصيل الاشتراك إلى بريدك الإلكتروني
+                            سيتم إرسال تفاصيل الاشتراك والفاتورة إلى بريدك الإلكتروني
                         </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (step === 'failed') {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-background">
+                <div className="text-center animate-in max-w-md px-4">
+                    <div className="w-24 h-24 bg-gradient-to-br from-destructive/20 to-destructive/5 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <svg className="w-12 h-12 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </div>
+                    <h2 className="text-3xl font-bold mb-3">فشلت عملية الدفع</h2>
+                    <p className="text-muted-foreground mb-4">
+                        {error || 'حدث خطأ أثناء معالجة الدفع'}
+                    </p>
+                    <div className="space-y-3">
+                        <button
+                            onClick={() => { setStep('form'); setError(''); }}
+                            className="btn-primary w-full py-3"
+                        >
+                            إعادة المحاولة
+                        </button>
+                        <Link href="/pricing" className="btn-outline w-full py-3 block text-center">
+                            العودة للأسعار
+                        </Link>
                     </div>
                 </div>
             </div>
@@ -194,209 +250,114 @@ function CheckoutContent() {
             </header>
 
             <main className="container mx-auto px-4 py-12">
-                <div className="max-w-4xl mx-auto">
-                    <h1 className="text-3xl font-bold text-center mb-8">إتمام الاشتراك</h1>
+                <div className="max-w-2xl mx-auto">
+                    <h1 className="text-3xl font-bold text-center mb-2">إتمام الاشتراك</h1>
+                    <p className="text-muted-foreground text-center mb-8">
+                        خطوة واحدة فقط للوصول إلى منصة n8n الخاصة بك
+                    </p>
 
-                    <div className="grid md:grid-cols-2 gap-8">
-                        {/* Order Summary */}
-                        <div className="order-2 md:order-1">
-                            <div className="card p-6 sticky top-6">
-                                <h2 className="text-xl font-bold mb-4">ملخص الطلب</h2>
-
-                                <div className="space-y-4 mb-6">
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">{plan.nameAr}</span>
-                                        <span>{formatPrice(plan.price)}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm text-muted-foreground">
-                                        <span>مدة الاشتراك</span>
-                                        <span>{plan.periodAr === 'شهر' ? 'شهر واحد' : 'سنة واحدة'}</span>
-                                    </div>
-                                </div>
-
-                                <div className="border-t pt-4 mb-6">
-                                    <div className="flex justify-between text-lg font-bold">
-                                        <span>الإجمالي</span>
-                                        <span className="text-primary">{formatPrice(plan.price)}</span>
-                                    </div>
-                                    <p className="text-sm text-muted-foreground mt-1">
-                                        شامل الضريبة
-                                    </p>
-                                </div>
-
-                                <div className="bg-muted/50 p-4 rounded-lg space-y-2 text-sm">
-                                    <div className="flex items-center gap-2">
-                                        <svg className="w-4 h-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                        <span>ضمان استرداد المال خلال 7 أيام</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <svg className="w-4 h-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                        <span>دفع آمن ومشفر</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <svg className="w-4 h-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                        <span>إلغاء في أي وقت</span>
-                                    </div>
-                                </div>
-
-                                {/* Change Plan */}
-                                <div className="mt-6 text-center">
-                                    <Link href="/pricing" className="text-sm text-primary hover:underline">
-                                        تغيير الخطة
-                                    </Link>
-                                </div>
+                    {/* Plan Summary Card */}
+                    <div className="card p-8 mb-6">
+                        <div className="flex items-center justify-between mb-6">
+                            <div>
+                                <h2 className="text-2xl font-bold">{plan.nameAr}</h2>
+                                <p className="text-muted-foreground">
+                                    {plan.periodAr === 'شهر' ? 'اشتراك شهري متجدد' : 'اشتراك سنوي (وفر 21%)'}
+                                </p>
+                            </div>
+                            <div className="text-left">
+                                <p className="text-3xl font-bold text-primary">{formatPrice(plan.price)}</p>
+                                <p className="text-sm text-muted-foreground">/ {plan.periodAr}</p>
                             </div>
                         </div>
 
-                        {/* Payment Form */}
-                        <div className="order-1 md:order-2">
-                            <div className="card p-6">
-                                <h2 className="text-xl font-bold mb-6">معلومات الدفع</h2>
-
-                                {/* Payment Method */}
-                                <div className="mb-6">
-                                    <label className="block text-sm font-medium mb-3">طريقة الدفع</label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button
-                                            type="button"
-                                            onClick={() => setPaymentMethod('card')}
-                                            className={`p-4 rounded-lg border-2 text-center transition-all ${paymentMethod === 'card'
-                                                    ? 'border-primary bg-primary/5'
-                                                    : 'border-muted hover:border-primary/50'
-                                                }`}
-                                        >
-                                            <svg className="w-8 h-8 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                                            </svg>
-                                            <span className="text-sm font-medium">بطاقة ائتمان</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setPaymentMethod('wallet')}
-                                            className={`p-4 rounded-lg border-2 text-center transition-all ${paymentMethod === 'wallet'
-                                                    ? 'border-primary bg-primary/5'
-                                                    : 'border-muted hover:border-primary/50'
-                                                }`}
-                                        >
-                                            <svg className="w-8 h-8 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                            </svg>
-                                            <span className="text-sm font-medium">محفظة إلكترونية</span>
-                                        </button>
+                        {/* Features */}
+                        <div className="border-t border-b py-6 mb-6">
+                            <h3 className="font-medium mb-4">ما ستحصل عليه:</h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                {[
+                                    'منصة n8n خاصة بك',
+                                    'دعم فني على مدار الساعة',
+                                    'نسخ احتياطي يومي',
+                                    'تشغيل غير محدود',
+                                    'واجهة عربية كاملة',
+                                    'إلغاء في أي وقت',
+                                ].map((feature, i) => (
+                                    <div key={i} className="flex items-center gap-2 text-sm">
+                                        <svg className="w-4 h-4 text-success flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span>{feature}</span>
                                     </div>
-                                </div>
-
-                                <form onSubmit={handleSubmit}>
-                                    {paymentMethod === 'card' ? (
-                                        <div className="space-y-4">
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1">رقم البطاقة</label>
-                                                <input
-                                                    type="text"
-                                                    value={cardData.number}
-                                                    onChange={(e) => setCardData({ ...cardData, number: formatCardNumber(e.target.value) })}
-                                                    placeholder="0000 0000 0000 0000"
-                                                    maxLength={19}
-                                                    className="input w-full text-left"
-                                                    dir="ltr"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1">اسم حامل البطاقة</label>
-                                                <input
-                                                    type="text"
-                                                    value={cardData.name}
-                                                    onChange={(e) => setCardData({ ...cardData, name: e.target.value.toUpperCase() })}
-                                                    placeholder="JOHN DOE"
-                                                    className="input w-full text-left"
-                                                    dir="ltr"
-                                                />
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="block text-sm font-medium mb-1">تاريخ الانتهاء</label>
-                                                    <input
-                                                        type="text"
-                                                        value={cardData.expiry}
-                                                        onChange={(e) => setCardData({ ...cardData, expiry: formatExpiry(e.target.value) })}
-                                                        placeholder="MM/YY"
-                                                        maxLength={5}
-                                                        className="input w-full text-left"
-                                                        dir="ltr"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium mb-1">CVV</label>
-                                                    <input
-                                                        type="password"
-                                                        value={cardData.cvv}
-                                                        onChange={(e) => setCardData({ ...cardData, cvv: e.target.value.replace(/\D/g, '') })}
-                                                        placeholder="•••"
-                                                        maxLength={4}
-                                                        className="input w-full text-left"
-                                                        dir="ltr"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="text-center py-8">
-                                            <svg className="w-16 h-16 mx-auto mb-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                            </svg>
-                                            <p className="text-muted-foreground mb-4">
-                                                سيتم تحويلك لإكمال الدفع عبر تطبيق المحفظة الإلكترونية
-                                            </p>
-                                            <p className="text-sm text-muted-foreground">
-                                                ندعم: فودافون كاش، اتصالات كاش، أورانج كاش
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    {error && (
-                                        <div className="mt-4 p-3 bg-destructive/10 text-destructive rounded-lg text-sm">
-                                            {error}
-                                        </div>
-                                    )}
-
-                                    <button
-                                        type="submit"
-                                        disabled={isProcessing}
-                                        className="btn-primary w-full py-3 mt-6 disabled:opacity-50"
-                                    >
-                                        {isProcessing ? 'جاري المعالجة...' : `ادفع ${formatPrice(plan.price)}`}
-                                    </button>
-
-                                    <p className="text-xs text-muted-foreground text-center mt-4">
-                                        بالضغط على الدفع، أنت توافق على{' '}
-                                        <Link href="/terms" className="text-primary hover:underline">
-                                            الشروط والأحكام
-                                        </Link>{' '}
-                                        و{' '}
-                                        <Link href="/privacy" className="text-primary hover:underline">
-                                            سياسة الخصوصية
-                                        </Link>
-                                    </p>
-                                </form>
+                                ))}
                             </div>
+                        </div>
 
-                            {/* Security Badges */}
-                            <div className="flex items-center justify-center gap-4 mt-6 text-muted-foreground text-sm">
-                                <div className="flex items-center gap-1">
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        {/* Total */}
+                        <div className="flex justify-between items-center text-lg mb-6">
+                            <span className="font-bold">الإجمالي الآن</span>
+                            <span className="text-2xl font-bold text-primary">{formatPrice(plan.price)}</span>
+                        </div>
+
+                        {/* Error */}
+                        {error && (
+                            <div className="mb-6 p-4 bg-destructive/10 text-destructive rounded-lg text-sm">
+                                {error}
+                            </div>
+                        )}
+
+                        {/* CTA Button */}
+                        <button
+                            onClick={handleCheckout}
+                            disabled={isLoading}
+                            className="btn-primary w-full py-4 text-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            {isLoading ? (
+                                <>
+                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    جاري التحميل...
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                                     </svg>
-                                    <span>مشفر وآمن</span>
-                                </div>
-                                <span>•</span>
-                                <span>SSL 256-bit</span>
-                            </div>
+                                    متابعة للدفع الآمن
+                                </>
+                            )}
+                        </button>
+
+                        <p className="text-xs text-muted-foreground text-center mt-4">
+                            بالضغط على متابعة، أنت توافق على{' '}
+                            <Link href="/terms" className="text-primary hover:underline">
+                                الشروط والأحكام
+                            </Link>{' '}
+                            و{' '}
+                            <Link href="/privacy" className="text-primary hover:underline">
+                                سياسة الخصوصية
+                            </Link>
+                        </p>
+                    </div>
+
+                    {/* Trust Badges */}
+                    <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                            </svg>
+                            <span>دفع آمن ومشفر</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                            </svg>
+                            <span>بطاقات ومحافظ إلكترونية</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
+                            </svg>
+                            <span>ضمان استرداد 7 أيام</span>
                         </div>
                     </div>
                 </div>

@@ -7,7 +7,7 @@ import { Request, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
 import { logger } from '../config/logger.js';
 import { config } from '../config/index.js';
-import { AppError, ValidationError, sendError } from '../utils/index.js';
+import { AppError, ValidationError, ValidationErrorDetail, sendError } from '../utils/index.js';
 
 /**
  * Handle 404 - Route not found
@@ -50,16 +50,19 @@ export function errorHandler(
             success: boolean;
             message: string;
             code: string;
-            errors?: Record<string, string>[];
+            errors?: ValidationErrorDetail[];
         } = {
             success: false,
             message: error.message,
             code: error.code,
         };
 
-        // Add validation errors if present
-        if (error instanceof ValidationError) {
+        // Add validation errors if present (check both instanceof and property existence)
+        if (error instanceof ValidationError && error.errors && error.errors.length > 0) {
             response.errors = error.errors;
+        } else if ('errors' in error && Array.isArray((error as { errors?: unknown[] }).errors)) {
+            // Fallback for cases where instanceof might fail due to module resolution
+            response.errors = (error as { errors: ValidationErrorDetail[] }).errors;
         }
 
         return res.status(error.statusCode).json(response);

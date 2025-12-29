@@ -81,17 +81,18 @@ export const authRateLimiter = rateLimit({
 
 /**
  * Rate limiter for signup
- * 3 signups per hour per IP
+ * 3 signups per hour per IP (100 in development)
  */
 export const signupRateLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 3,
+    max: config.isDevelopment ? 100 : 3,
     message: {
         success: false,
         message: 'Too many signup attempts, please try again later',
     },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => config.isDevelopment, // Skip rate limiting in development
     handler: (req, res) => {
         res.status(429).json({
             success: false,

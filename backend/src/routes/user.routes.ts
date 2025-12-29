@@ -14,7 +14,15 @@ import {
 
 const router = Router();
 
-// All user routes require authentication
+// Public route for email verification (no auth required)
+/**
+ * @route   GET /api/user/verify-email
+ * @desc    Verify email with token
+ * @access  Public
+ */
+router.get('/verify-email', userController.verifyEmail);
+
+// All other user routes require authentication
 router.use(authenticate);
 
 /**
@@ -58,5 +66,26 @@ router.get('/subscription', userController.getSubscription);
  * @access  Protected
  */
 router.get('/activity', paginationValidation, userController.getActivityLog);
+
+/**
+ * @route   POST /api/user/request-verification
+ * @desc    Request email verification
+ * @access  Protected
+ */
+router.post('/request-verification', userController.requestEmailVerification);
+
+/**
+ * @route   GET /api/user/email-status
+ * @desc    Check if email is verified
+ * @access  Protected
+ */
+router.get('/email-status', userController.getEmailStatus);
+
+/**
+ * @route   GET /api/user/payments
+ * @desc    Get user's payment history
+ * @access  Protected
+ */
+router.get('/payments', userController.getPayments);
 
 export default router;

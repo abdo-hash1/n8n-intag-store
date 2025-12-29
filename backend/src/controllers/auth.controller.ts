@@ -117,3 +117,86 @@ export async function getMe(
         next(error);
     }
 }
+
+/**
+ * POST /api/auth/forgot-password
+ * Request password reset email
+ */
+export async function forgotPassword(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const { email } = req.body;
+        const ipAddress = req.ip || req.socket.remoteAddress;
+
+        if (!email) {
+            res.status(400).json({ success: false, message: 'Email is required' });
+            return;
+        }
+
+        await authService.requestPasswordReset(email, ipAddress);
+
+        // Always return success to prevent email enumeration
+        sendSuccess(res, null, 'If an account exists with this email, a reset link has been sent');
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
+ * GET /api/auth/verify-reset-token
+ * Verify if a reset token is valid
+ */
+export async function verifyResetToken(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const { token } = req.query;
+
+        if (!token || typeof token !== 'string') {
+            res.status(400).json({ success: false, message: 'Token is required' });
+            return;
+        }
+
+        const result = await authService.verifyResetToken(token);
+
+        sendSuccess(res, { valid: result.valid }, result.valid ? 'Token is valid' : 'Token is invalid or expired');
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
+ * POST /api/auth/reset-password
+ * Reset password using token
+ */
+export async function resetPassword(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const { token, password } = req.body;
+        const ipAddress = req.ip || req.socket.remoteAddress;
+
+        if (!token) {
+            res.status(400).json({ success: false, message: 'Token is required' });
+            return;
+        }
+
+        if (!password || password.length < 8) {
+            res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+            return;
+        }
+
+        await authService.resetPassword(token, password, ipAddress);
+
+        sendSuccess(res, null, 'Password reset successfully. You can now login with your new password.');
+    } catch (error) {
+        next(error);
+    }
+}

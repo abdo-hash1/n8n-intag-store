@@ -61,12 +61,17 @@ export class ConflictError extends AppError {
 }
 
 // 422 Unprocessable Entity
+export interface ValidationErrorDetail {
+    field: string;
+    message: string;
+}
+
 export class ValidationError extends AppError {
-    public readonly errors: Record<string, string>[];
+    public readonly errors: ValidationErrorDetail[];
 
     constructor(
         message: string = 'Validation failed',
-        errors: Record<string, string>[] = []
+        errors: ValidationErrorDetail[] = []
     ) {
         super(message, 422, 'VALIDATION_ERROR');
         this.errors = errors;

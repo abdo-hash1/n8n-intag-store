@@ -163,3 +163,101 @@ export async function getActivityLog(
         next(error);
     }
 }
+
+/**
+ * POST /api/user/request-verification
+ * Request email verification
+ */
+export async function requestEmailVerification(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        if (!req.user) {
+            throw new NotFoundError('User not found');
+        }
+
+        const ipAddress = req.ip || req.socket.remoteAddress;
+
+        await userService.requestEmailVerification(req.user.id, ipAddress);
+
+        sendSuccess(res, null, 'Verification email sent. Please check your inbox.');
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
+ * GET /api/user/verify-email
+ * Verify email with token (public endpoint)
+ */
+export async function verifyEmail(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const { token } = req.query;
+
+        if (!token || typeof token !== 'string') {
+            res.status(400).json({ success: false, message: 'Token is required' });
+            return;
+        }
+
+        const ipAddress = req.ip || req.socket.remoteAddress;
+        const result = await userService.verifyEmail(token, ipAddress);
+
+        if (result.success) {
+            sendSuccess(res, { verified: true }, result.message);
+        } else {
+            res.status(400).json({ success: false, message: result.message });
+        }
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
+ * GET /api/user/email-status
+ * Check if email is verified
+ */
+export async function getEmailStatus(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        if (!req.user) {
+            throw new NotFoundError('User not found');
+        }
+
+        const isVerified = await userService.isEmailVerified(req.user.id);
+
+        sendSuccess(res, { emailVerified: isVerified }, 'Email status retrieved');
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
+ * GET /api/user/payments
+ * Get user's payment history
+ */
+export async function getPayments(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        if (!req.user) {
+            throw new NotFoundError('User not found');
+        }
+
+        const payments = await userService.getPayments(req.user.id);
+
+        sendSuccess(res, { payments }, 'Payments retrieved successfully');
+    } catch (error) {
+        next(error);
+    }
+}

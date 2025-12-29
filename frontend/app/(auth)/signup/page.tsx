@@ -94,6 +94,39 @@ export default function SignupPage() {
             const data = await response.json();
 
             if (!response.ok) {
+                // Check for validation errors with field details
+                if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+                    // Map field names to Arabic and show specific errors
+                    const fieldNames: Record<string, string> = {
+                        fullName: 'الاسم الكامل',
+                        email: 'البريد الإلكتروني',
+                        phone: 'رقم الهاتف',
+                        password: 'كلمة المرور',
+                    };
+                    const errorMessages = data.errors.map((err: { field: string; message: string }) => {
+                        const fieldLabel = fieldNames[err.field] || err.field;
+                        // Translate common error messages
+                        let message = err.message;
+                        if (message.includes('must be between 2 and 100 characters')) {
+                            message = 'يجب أن يكون بين 2 و 100 حرف';
+                        } else if (message.includes('valid email')) {
+                            message = 'يرجى إدخال بريد إلكتروني صحيح';
+                        } else if (message.includes('valid Egyptian phone')) {
+                            message = 'يرجى إدخال رقم هاتف مصري صحيح';
+                        } else if (message.includes('already exists') || message.includes('already registered')) {
+                            message = 'مسجل مسبقاً';
+                        }
+                        return `${fieldLabel}: ${message}`;
+                    });
+                    throw new Error(errorMessages.join('\n'));
+                }
+                // Check for specific known error codes
+                if (data.code === 'EMAIL_EXISTS') {
+                    throw new Error('البريد الإلكتروني مسجل مسبقاً');
+                }
+                if (data.code === 'PHONE_EXISTS') {
+                    throw new Error('رقم الهاتف مسجل مسبقاً');
+                }
                 throw new Error(data.message || 'فشل إنشاء الحساب');
             }
 
@@ -147,7 +180,7 @@ export default function SignupPage() {
 
                     {/* Error Message */}
                     {error && (
-                        <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg mb-6 text-center">
+                        <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg mb-6 text-right whitespace-pre-line">
                             {error}
                         </div>
                     )}

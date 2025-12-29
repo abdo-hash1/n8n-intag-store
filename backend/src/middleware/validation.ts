@@ -54,7 +54,7 @@ export const signupValidation = [
     body('phone')
         .optional()
         .trim()
-        .matches(/^(\+?20)?1[0125][0-9]{8}$/)
+        .matches(/^(0|\+?20)?1[0125][0-9]{8}$/)
         .withMessage('Please provide a valid Egyptian phone number'),
 
     validate,
@@ -96,7 +96,7 @@ export const updateProfileValidation = [
     body('phone')
         .optional()
         .trim()
-        .matches(/^(\+?20)?1[0125][0-9]{8}$/)
+        .matches(/^(0|\+?20)?1[0125][0-9]{8}$/)
         .withMessage('Please provide a valid Egyptian phone number'),
 
     validate,
