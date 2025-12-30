@@ -39,12 +39,77 @@ function CheckoutContent() {
     const [step, setStep] = useState<'form' | 'processing' | 'success' | 'failed'>('form');
     const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
 
+    // Coupon state
+    const [couponCode, setCouponCode] = useState('');
+    const [couponLoading, setCouponLoading] = useState(false);
+    const [couponError, setCouponError] = useState('');
+    const [appliedCoupon, setAppliedCoupon] = useState<{
+        id: string;
+        code: string;
+        discountType: string;
+        discountValue: number;
+        discountAmount: number;
+    } | null>(null);
+
+    // Calculate final price
+    const finalPrice = appliedCoupon
+        ? Math.max(0, plan.price - appliedCoupon.discountAmount)
+        : plan.price;
+
     const formatPrice = (price: number) => {
         return new Intl.NumberFormat('ar-EG', {
             style: 'currency',
             currency: 'EGP',
             minimumFractionDigits: 0,
         }).format(price);
+    };
+
+    // Validate coupon
+    const validateCoupon = async () => {
+        if (!couponCode.trim()) return;
+
+        setCouponLoading(true);
+        setCouponError('');
+
+        try {
+            const token = localStorage.getItem('accessToken');
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/coupons/validate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    code: couponCode,
+                    planType: planId,
+                    amount: plan.price
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.data?.valid) {
+                setAppliedCoupon({
+                    id: data.data.coupon.id,
+                    code: data.data.coupon.code,
+                    discountType: data.data.coupon.discountType,
+                    discountValue: data.data.coupon.discountValue,
+                    discountAmount: data.data.discountAmount
+                });
+                setCouponCode('');
+            } else {
+                setCouponError(data.data?.message || data.message || 'كود الخصم غير صالح');
+            }
+        } catch {
+            setCouponError('حدث خطأ في التحقق من الكود');
+        } finally {
+            setCouponLoading(false);
+        }
+    };
+
+    const removeCoupon = () => {
+        setAppliedCoupon(null);
+        setCouponError('');
     };
 
     // Handle mock payment completion callback
@@ -293,10 +358,71 @@ function CheckoutContent() {
                             </div>
                         </div>
 
-                        {/* Total */}
-                        <div className="flex justify-between items-center text-lg mb-6">
-                            <span className="font-bold">الإجمالي الآن</span>
-                            <span className="text-2xl font-bold text-primary">{formatPrice(plan.price)}</span>
+                        {/* Coupon Code */}
+                        <div className="mb-6">
+                            <label className="block text-sm font-medium mb-2">كود الخصم (اختياري)</label>
+                            {appliedCoupon ? (
+                                <div className="flex items-center justify-between p-3 bg-success/10 text-success rounded-lg">
+                                    <div className="flex items-center gap-2">
+                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <span className="font-medium">{appliedCoupon.code}</span>
+                                        <span className="text-sm">
+                                            (-{appliedCoupon.discountType === 'percentage'
+                                                ? `${appliedCoupon.discountValue}%`
+                                                : formatPrice(appliedCoupon.discountValue)})
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={removeCoupon}
+                                        className="text-success/80 hover:text-success"
+                                    >
+                                        إزالة
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={couponCode}
+                                        onChange={(e) => {
+                                            setCouponCode(e.target.value.toUpperCase());
+                                            setCouponError('');
+                                        }}
+                                        placeholder="أدخل كود الخصم"
+                                        className="input flex-1"
+                                    />
+                                    <button
+                                        onClick={validateCoupon}
+                                        disabled={couponLoading || !couponCode.trim()}
+                                        className="btn-outline px-4 disabled:opacity-50"
+                                    >
+                                        {couponLoading ? '...' : 'تطبيق'}
+                                    </button>
+                                </div>
+                            )}
+                            {couponError && (
+                                <p className="text-sm text-destructive mt-2">{couponError}</p>
+                            )}
+                        </div>
+
+                        {/* Price Summary */}
+                        <div className="space-y-3 mb-6">
+                            <div className="flex justify-between items-center">
+                                <span className="text-muted-foreground">سعر الخطة</span>
+                                <span>{formatPrice(plan.price)}</span>
+                            </div>
+                            {appliedCoupon && (
+                                <div className="flex justify-between items-center text-success">
+                                    <span>الخصم ({appliedCoupon.code})</span>
+                                    <span>-{formatPrice(appliedCoupon.discountAmount)}</span>
+                                </div>
+                            )}
+                            <div className="border-t pt-3 flex justify-between items-center text-lg">
+                                <span className="font-bold">الإجمالي الآن</span>
+                                <span className="text-2xl font-bold text-primary">{formatPrice(finalPrice)}</span>
+                            </div>
                         </div>
 
                         {/* Error */}

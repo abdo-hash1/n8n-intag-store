@@ -12,6 +12,8 @@ import subscriptionRoutes from './subscription.routes.js';
 import supportRoutes from './support.routes.js';
 import paymentRoutes from './payment.routes.js';
 import instanceRoutes from './instance.routes.js';
+import couponRoutes from './coupon.routes.js';
+import pricingRoutes from './pricing.routes.js';
 
 const router = Router();
 
@@ -36,7 +38,14 @@ router.use('/payments', paymentRoutes);
 // Instance routes (n8n Docker containers)
 router.use('/instance', instanceRoutes);
 
+// Coupon routes
+router.use('/coupons', couponRoutes);
+
+// Pricing routes
+router.use('/pricing', pricingRoutes);
+
 // Admin routes
 router.use('/admin', adminRoutes);
 
 export default router;
+

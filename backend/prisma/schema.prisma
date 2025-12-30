@@ -340,3 +340,95 @@ model SystemSetting {
 
   @@map("system_settings")
 }
+
+// ===========================================
+// COUPON CODES TABLE
+// ===========================================
+// Purpose: Discount codes for subscriptions
+
+model Coupon {
+  id                String    @id @default(uuid())
+  code              String    @unique  // e.g., "WELCOME20", "SUMMER50"
+  
+  // Discount Details
+  discountType      String    @map("discount_type")  // percentage, fixed
+  discountValue     Float     @map("discount_value") // 20 for 20% or 50 for 50 EGP
+  
+  // Limits
+  maxUses           Int?      @map("max_uses")       // null = unlimited
+  usedCount         Int       @default(0) @map("used_count")
+  maxUsesPerUser    Int       @default(1) @map("max_uses_per_user")
+  
+  // Validity
+  validFrom         DateTime  @default(now()) @map("valid_from")
+  validUntil        DateTime? @map("valid_until")   // null = never expires
+  isActive          Boolean   @default(true) @map("is_active")
+  
+  // Plan restrictions (null = all plans)
+  applicablePlans   String?   @map("applicable_plans") // JSON: ["monthly", "yearly"] or null for all
+  
+  // Minimum order
+  minOrderAmount    Float?    @map("min_order_amount")
+  
+  // Timestamps
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  
+  // Track usage
+  usages            CouponUsage[]
+
+  @@map("coupons")
+}
+
+// ===========================================
+// COUPON USAGE TABLE
+// ===========================================
+// Purpose: Track which users used which coupons
+
+model CouponUsage {
+  id          String   @id @default(uuid())
+  couponId    String   @map("coupon_id")
+  userId      String   @map("user_id")
+  orderId     String?  @map("order_id")  // Reference to payment/subscription
+  
+  // Discount applied
+  discountAmount Float  @map("discount_amount")
+  
+  // Timestamps
+  usedAt      DateTime @default(now()) @map("used_at")
+  
+  // Relations
+  coupon      Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@map("coupon_usages")
+}
+
+// ===========================================
+// PRICING CONFIG TABLE
+// ===========================================
+// Purpose: Dynamic pricing for subscription plans
+
+model PricingConfig {
+  id              String   @id @default(uuid())
+  planType        String   @unique @map("plan_type")  // monthly, yearly
+  
+  // Pricing
+  price           Float
+  currency        String   @default("EGP")
+  
+  // Display info
+  displayName     String   @map("display_name")       // "الاشتراك الشهري"
+  description     String?
+  
+  // Features (JSON array)
+  features        String   @default("[]")
+  
+  // Status
+  isActive        Boolean  @default(true) @map("is_active")
+  
+  // Timestamps
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("pricing_config")
+}

@@ -12,4 +12,7 @@ export * from './support.service.js';
 export * from './docker.service.js';
 export * from './email.service.js';
 export * from './paymob.service.js';
+export * from './coupon.service.js';
+export * from './pricing.service.js';
+
 

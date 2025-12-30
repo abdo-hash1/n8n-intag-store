@@ -377,6 +377,107 @@ class AdminService {
     }
 
     /**
+     * Get all subscriptions with pagination
+     */
+    async getAllSubscriptions(options: {
+        page?: number;
+        limit?: number;
+        status?: string;
+        planType?: string;
+    } = {}) {
+        const { page = 1, limit = 20, status, planType } = options;
+        const skip = (page - 1) * limit;
+
+        const where: Record<string, unknown> = {};
+        if (status) where.status = status;
+        if (planType) where.planType = planType;
+
+        const [subscriptions, total] = await Promise.all([
+            prisma.subscription.findMany({
+                where,
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            email: true,
+                            fullName: true,
+                        },
+                    },
+                },
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip,
+            }),
+            prisma.subscription.count({ where }),
+        ]);
+
+        return {
+            subscriptions,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit)
+            }
+        };
+    }
+
+    /**
+     * Get all support tickets with pagination
+     */
+    async getAllTickets(options: {
+        page?: number;
+        limit?: number;
+        status?: string;
+        priority?: string;
+    } = {}) {
+        const { page = 1, limit = 20, status, priority } = options;
+        const skip = (page - 1) * limit;
+
+        const where: Record<string, unknown> = {};
+        if (status) where.status = status;
+        if (priority) where.priority = priority;
+
+        const [tickets, total] = await Promise.all([
+            prisma.supportTicket.findMany({
+                where,
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            email: true,
+                            fullName: true,
+                        },
+                    },
+                    assignedAdmin: {
+                        select: {
+                            id: true,
+                            fullName: true,
+                        },
+                    },
+                    _count: {
+                        select: { messages: true }
+                    }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip,
+            }),
+            prisma.supportTicket.count({ where }),
+        ]);
+
+        return {
+            tickets,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit)
+            }
+        };
+    }
+
+    /**
      * Get all payments with pagination
      */
     async getAllPayments(options: {
