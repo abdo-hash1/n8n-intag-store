@@ -35,7 +35,7 @@ export default function DashboardPage() {
     const fetchSubscription = async () => {
         try {
             const token = localStorage.getItem('accessToken');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/subscription`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/subscription`, {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
