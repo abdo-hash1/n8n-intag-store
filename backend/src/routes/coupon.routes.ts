@@ -6,14 +6,15 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { couponService } from '../services/coupon.service.js';
 import { sendSuccess, BadRequestError } from '../utils/index.js';
+import { authenticate, requireAdmin } from '../middleware/index.js';
 
 const router = Router();
 
 /**
  * POST /api/coupons/validate
- * Validate a coupon code (user)
+ * Validate a coupon code (user - requires login)
  */
-router.post('/validate', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/validate', authenticate, async (req: Request, res: Response, next: NextFunction) => {
     try {
         if (!req.user) {
             throw new BadRequestError('Authentication required');
@@ -42,12 +43,8 @@ router.post('/validate', async (req: Request, res: Response, next: NextFunction)
  * GET /api/coupons (admin)
  * Get all coupons with pagination
  */
-router.get('/', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', authenticate, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
     try {
-        if (!req.user || req.user.role !== 'admin') {
-            throw new BadRequestError('Admin access required');
-        }
-
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 20;
 
@@ -62,12 +59,8 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
  * POST /api/coupons (admin)
  * Create a new coupon
  */
-router.post('/', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
     try {
-        if (!req.user || req.user.role !== 'admin') {
-            throw new BadRequestError('Admin access required');
-        }
-
         const {
             code,
             discountType,
@@ -106,12 +99,8 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
  * PUT /api/coupons/:id (admin)
  * Update a coupon
  */
-router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', authenticate, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
     try {
-        if (!req.user || req.user.role !== 'admin') {
-            throw new BadRequestError('Admin access required');
-        }
-
         const { id } = req.params;
         const coupon = await couponService.updateCoupon(id, req.body);
 
@@ -125,12 +114,8 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
  * DELETE /api/coupons/:id (admin)
  * Delete a coupon
  */
-router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', authenticate, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
     try {
-        if (!req.user || req.user.role !== 'admin') {
-            throw new BadRequestError('Admin access required');
-        }
-
         const { id } = req.params;
         await couponService.deleteCoupon(id);
 
@@ -141,3 +126,4 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
 });
 
 export default router;
+

@@ -6,6 +6,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { pricingService } from '../services/pricing.service.js';
 import { sendSuccess, BadRequestError } from '../utils/index.js';
+import { authenticate, requireAdmin } from '../middleware/index.js';
 
 const router = Router();
 
@@ -45,12 +46,8 @@ router.get('/:planType', async (req: Request, res: Response, next: NextFunction)
  * PUT /api/pricing/:planType (admin)
  * Update plan pricing
  */
-router.put('/:planType', async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:planType', authenticate, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
     try {
-        if (!req.user || req.user.role !== 'admin') {
-            throw new BadRequestError('Admin access required');
-        }
-
         const { planType } = req.params;
 
         if (planType !== 'monthly' && planType !== 'yearly') {
@@ -74,3 +71,4 @@ router.put('/:planType', async (req: Request, res: Response, next: NextFunction)
 });
 
 export default router;
+
