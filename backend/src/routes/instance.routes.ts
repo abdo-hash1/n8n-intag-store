@@ -5,13 +5,17 @@
  */
 
 import { Router } from 'express';
-import { instanceController } from '../controllers/index.js';
+import * as instanceController from '../controllers/instance.controller.js';
 import { authenticate, requireAdmin, defaultRateLimiter } from '../middleware/index.js';
 
 const router = Router();
 
 // All routes require authentication
 router.use(authenticate);
+
+// ===================================
+// User Routes
+// ===================================
 
 /**
  * @route   POST /api/instance/provision
@@ -28,34 +32,37 @@ router.post('/provision', defaultRateLimiter, instanceController.provisionInstan
 router.get('/status', instanceController.getInstanceStatus);
 
 /**
- * @route   POST /api/instance/start
- * @desc    Start the user's n8n instance
+ * @route   POST /api/instance/resume
+ * @desc    Resume a suspended n8n instance
  * @access  Private
  */
-router.post('/start', instanceController.startInstance);
+router.post('/resume', instanceController.resumeInstance);
+
+// ===================================
+// Admin Routes
+// ===================================
 
 /**
- * @route   POST /api/instance/stop
- * @desc    Stop the user's n8n instance
- * @access  Private
+ * @route   GET /api/instance/admin/list
+ * @desc    Get all n8n instances with pagination
+ * @access  Admin
  */
-router.post('/stop', instanceController.stopInstance);
+router.get('/admin/list', requireAdmin, instanceController.adminGetAllInstances);
 
 /**
- * @route   POST /api/instance/restart
- * @desc    Restart the user's n8n instance
- * @access  Private
+ * @route   GET /api/instance/admin/stats
+ * @desc    Get instance statistics
+ * @access  Admin
  */
-router.post('/restart', instanceController.restartInstance);
+router.get('/admin/stats', requireAdmin, instanceController.adminGetInstanceStats);
 
 /**
- * @route   GET /api/instance/logs
- * @desc    Get instance logs
- * @access  Private
+ * @route   GET /api/instance/admin/:userId
+ * @desc    Get a user's instance details
+ * @access  Admin
  */
-router.get('/logs', instanceController.getInstanceLogs);
+router.get('/admin/:userId', requireAdmin, instanceController.adminGetInstanceStatus);
 
-// Admin routes
 /**
  * @route   POST /api/instance/admin/:userId/provision
  * @desc    Admin provision an instance for a user
@@ -64,17 +71,31 @@ router.get('/logs', instanceController.getInstanceLogs);
 router.post('/admin/:userId/provision', requireAdmin, instanceController.adminProvisionInstance);
 
 /**
- * @route   DELETE /api/instance/admin/:userId
- * @desc    Admin destroy a user's instance
+ * @route   POST /api/instance/admin/:userId/suspend
+ * @desc    Admin suspend a user's instance
  * @access  Admin
  */
-router.delete('/admin/:userId', requireAdmin, instanceController.adminDestroyInstance);
+router.post('/admin/:userId/suspend', requireAdmin, instanceController.adminSuspendInstance);
 
 /**
- * @route   GET /api/instance/admin/:userId/status
- * @desc    Admin get a user's instance status
+ * @route   POST /api/instance/admin/:userId/resume
+ * @desc    Admin resume a user's instance
  * @access  Admin
  */
-router.get('/admin/:userId/status', requireAdmin, instanceController.adminGetInstanceStatus);
+router.post('/admin/:userId/resume', requireAdmin, instanceController.adminResumeInstance);
+
+/**
+ * @route   DELETE /api/instance/admin/:userId
+ * @desc    Admin delete a user's instance
+ * @access  Admin
+ */
+router.delete('/admin/:userId', requireAdmin, instanceController.adminDeleteInstance);
+
+/**
+ * @route   GET /api/instance/admin/:instanceId/logs
+ * @desc    Get provisioning logs for an instance
+ * @access  Admin
+ */
+router.get('/admin/:instanceId/logs', requireAdmin, instanceController.adminGetInstanceLogs);
 
 export default router;

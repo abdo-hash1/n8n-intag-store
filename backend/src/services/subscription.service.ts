@@ -12,6 +12,7 @@ import {
     ConflictError,
 } from '../utils/index.js';
 import { activityLogService } from './activityLog.service.js';
+import { provisioningService } from './provisioning/index.js';
 
 // Types
 interface CreateSubscriptionData {
@@ -110,7 +111,30 @@ class SubscriptionService {
 
         logger.info(`Subscription created for user ${userId}: ${planType}`);
 
+        // Provision n8n instance (async - don't block subscription creation)
+        this.provisionN8nInstance(userId).catch((err) => {
+            logger.error(`Failed to provision n8n instance for user ${userId}:`, err);
+        });
+
         return subscription;
+    }
+
+    /**
+     * Provision n8n instance for a user (called after successful subscription)
+     */
+    private async provisionN8nInstance(userId: string) {
+        try {
+            logger.info(`Provisioning n8n instance for user ${userId}...`);
+            const result = await provisioningService.provisionInstance(userId);
+
+            if (result.success) {
+                logger.info(`n8n instance provisioned for user ${userId}: ${result.instanceUrl}`);
+            } else {
+                logger.error(`n8n provisioning failed for user ${userId}: ${result.error}`);
+            }
+        } catch (error) {
+            logger.error(`n8n provisioning error for user ${userId}:`, error);
+        }
     }
 
     /**
@@ -199,6 +223,11 @@ class SubscriptionService {
 
         logger.info(`Subscription paused: ${subscriptionId}`);
 
+        // Suspend n8n instance (async)
+        provisioningService.suspendInstance(userId).catch((err) => {
+            logger.error(`Failed to suspend n8n instance for user ${userId}:`, err);
+        });
+
         return updated;
     }
 
@@ -251,6 +280,11 @@ class SubscriptionService {
 
         logger.info(`Subscription resumed: ${subscriptionId}`);
 
+        // Resume n8n instance (async)
+        provisioningService.resumeInstance(userId).catch((err) => {
+            logger.error(`Failed to resume n8n instance for user ${userId}:`, err);
+        });
+
         return updated;
     }
 
@@ -292,6 +326,11 @@ class SubscriptionService {
         });
 
         logger.info(`Subscription cancelled: ${subscriptionId}`);
+
+        // Schedule n8n instance deletion (30 days grace period)
+        provisioningService.scheduleInstanceDeletion(userId, 30).catch((err) => {
+            logger.error(`Failed to schedule n8n instance deletion for user ${userId}:`, err);
+        });
 
         return updated;
     }

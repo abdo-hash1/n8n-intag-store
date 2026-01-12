@@ -1,0 +1,17 @@
+version: "3.8"
+services:
+  n8n-test:
+    image: n8nio/n8n:latest
+    container_name: n8n-local-test
+    networks:
+      - n8n-cluster
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.n8n-local.rule=Host(`local.n8n.speak25.online`)"
+      - traefik.http.routers.n8n-local.entrypoints=websecure
+      - traefik.http.routers.n8n-local.tls=true
+      - traefik.http.routers.n8n-local.tls.certresolver=letsencrypt
+      - traefik.http.services.n8n-local.loadbalancer.server.port=5678
+networks:
+  n8n-cluster:
+    external: true

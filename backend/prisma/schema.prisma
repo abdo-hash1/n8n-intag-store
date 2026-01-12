@@ -28,10 +28,6 @@ model User {
   status            String    @default("active") // active, suspended, deleted
   emailVerified     Boolean   @default(false) @map("email_verified")
   
-  // n8n Instance Details
-  instanceUrl       String?   @map("instance_url")
-  containerId       String?   @map("container_id")
-  
   // Timestamps
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
@@ -48,6 +44,7 @@ model User {
   supportTickets    SupportTicket[]
   supportMessages   SupportMessage[]
   activityLogs      ActivityLog[]
+  n8nInstance       N8nInstance?
   
   // Admin relations (for assigned tickets)
   assignedTickets   SupportTicket[] @relation("AssignedAdmin")
@@ -431,4 +428,128 @@ model PricingConfig {
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("pricing_config")
+}
+
+// ===========================================
+// N8N INSTANCES TABLE
+// ===========================================
+// Purpose: Track each customer's n8n instance
+
+model N8nInstance {
+  id                String    @id @default(uuid())
+  userId            String    @unique @map("user_id")
+  
+  // Instance Identification
+  subdomain         String    @unique  // e.g., "customer123" for customer123.n8n.speak25.online
+  containerId       String?   @map("container_id")
+  
+  // Status
+  status            String    @default("pending") // pending, provisioning, active, suspended, resuming, deleting, deleted, error
+  
+  // Resource Allocation
+  allocatedRam      Int       @default(2048) @map("allocated_ram")  // in MB
+  allocatedCpu      Int       @default(1) @map("allocated_cpu")     // cores
+  
+  // Database Credentials (for isolated PostgreSQL database)
+  dbName            String?   @map("db_name")
+  dbUser            String?   @map("db_user")
+  dbPassword        String?   @map("db_password")  // encrypted
+  
+  // n8n Configuration
+  encryptionKey     String?   @map("encryption_key")  // n8n encryption key
+  webhookUrl        String?   @map("webhook_url")
+  
+  // Cluster Assignment
+  workerId          String?   @map("worker_id")
+  
+  // Lifecycle Timestamps
+  createdAt         DateTime  @default(now()) @map("created_at")
+  provisionedAt     DateTime? @map("provisioned_at")
+  suspendedAt       DateTime? @map("suspended_at")
+  scheduledDeleteAt DateTime? @map("scheduled_delete_at")
+  deletedAt         DateTime? @map("deleted_at")
+  
+  // Error Tracking
+  lastError         String?   @map("last_error")
+  errorCount        Int       @default(0) @map("error_count")
+  
+  // Relations
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  worker            ClusterNode? @relation(fields: [workerId], references: [id])
+  provisioningLogs  ProvisioningLog[]
+  
+  @@map("n8n_instances")
+}
+
+// ===========================================
+// CLUSTER NODES TABLE
+// ===========================================
+// Purpose: Track worker servers in the cluster
+
+model ClusterNode {
+  id              String    @id @default(uuid())
+  name            String    @unique  // e.g., "n8n-worker-1"
+  
+  // Hetzner Details
+  hetznerId       String?   @unique @map("hetzner_id")
+  serverType      String    @default("cx43") @map("server_type")  // Hetzner server type
+  ipAddress       String    @map("ip_address")
+  location        String    @default("fsn1")  // Hetzner location
+  
+  // Node Type
+  nodeType        String    @default("worker") @map("node_type")  // manager, worker, services
+  
+  // Capacity
+  maxInstances    Int       @default(6) @map("max_instances")
+  currentLoad     Int       @default(0) @map("current_load")
+  
+  // Status
+  status          String    @default("active")  // provisioning, active, draining, maintenance, offline, deleting
+  
+  // Health Monitoring
+  lastHealthCheck DateTime? @map("last_health_check")
+  healthStatus    String    @default("unknown") @map("health_status")  // healthy, unhealthy, unknown
+  
+  // Timestamps
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  instances       N8nInstance[]
+  provisioningLogs ProvisioningLog[]
+  
+  @@map("cluster_nodes")
+}
+
+// ===========================================
+// PROVISIONING LOG TABLE
+// ===========================================
+// Purpose: Audit trail for all provisioning actions
+
+model ProvisioningLog {
+  id            String    @id @default(uuid())
+  instanceId    String?   @map("instance_id")
+  nodeId        String?   @map("node_id")
+  
+  // Action Details
+  action        String    // provision, suspend, resume, delete, scale, health_check, error
+  status        String    @default("started")  // started, in_progress, completed, failed
+  
+  // Details
+  details       String?   // JSON string with action details
+  error         String?   // Error message if failed
+  
+  // Timing
+  startedAt     DateTime  @default(now()) @map("started_at")
+  completedAt   DateTime? @map("completed_at")
+  durationMs    Int?      @map("duration_ms")
+  
+  // Actor (system or admin user id)
+  triggeredBy   String?   @map("triggered_by")
+  
+  // Relations
+  instance      N8nInstance? @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  node          ClusterNode? @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+  
+  @@map("provisioning_logs")
 }

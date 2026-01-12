@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Pagination from '@/components/Pagination';
 
 interface Payment {
     id: string;
@@ -307,27 +308,13 @@ export default function AdminPaymentsPage() {
                 </div>
 
                 {/* Pagination */}
-                {totalPages > 1 && (
-                    <div className="flex items-center justify-between p-4 border-t">
-                        <button
-                            onClick={() => setPage((p) => Math.max(1, p - 1))}
-                            disabled={page === 1}
-                            className="btn-outline px-4 py-2 disabled:opacity-50"
-                        >
-                            السابق
-                        </button>
-                        <span className="text-sm text-muted-foreground">
-                            صفحة {page} من {totalPages}
-                        </span>
-                        <button
-                            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                            disabled={page === totalPages}
-                            className="btn-outline px-4 py-2 disabled:opacity-50"
-                        >
-                            التالي
-                        </button>
-                    </div>
-                )}
+                <Pagination
+                    currentPage={page}
+                    totalPages={totalPages}
+                    total={total}
+                    limit={limit}
+                    onPageChange={setPage}
+                />
             </div>
         </div>
     );

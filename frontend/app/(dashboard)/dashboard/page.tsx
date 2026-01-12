@@ -127,10 +127,14 @@ export default function DashboardPage() {
                     </div>
                     {isLoading ? (
                         <div className="skeleton h-6 w-32" />
-                    ) : subscription?.nextBillingDate ? (
+                    ) : subscription?.status === 'active' ? (
                         <div>
-                            <p className="text-lg font-semibold">{formatDate(subscription.nextBillingDate)}</p>
-                            <p className="text-sm text-muted-foreground mt-1">{subscription.amount} ج.م</p>
+                            <p className="text-lg font-semibold">
+                                {formatDate(subscription.nextBillingDate || subscription.currentPeriodEnd)}
+                            </p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                                {subscription.amount ? `${subscription.amount} ج.م` : '-'}
+                            </p>
                         </div>
                     ) : (
                         <p className="text-muted-foreground">-</p>

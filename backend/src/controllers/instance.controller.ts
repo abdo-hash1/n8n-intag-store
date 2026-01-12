@@ -4,9 +4,10 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { dockerService } from '../services/index.js';
+import { provisioningService } from '../services/provisioning/index.js';
 import { sendSuccess, sendCreated, BadRequestError } from '../utils/index.js';
 import { prisma } from '../config/database.js';
+import { logger } from '../config/logger.js';
 
 /**
  * POST /api/instance/provision
@@ -34,16 +35,15 @@ export async function provisionInstance(
             throw new BadRequestError('Active subscription required to provision an instance');
         }
 
-        const ipAddress = req.ip || req.socket.remoteAddress;
+        const result = await provisioningService.provisionInstance(req.user.id);
 
-        const result = await dockerService.provisionInstance({
-            userId: req.user.id,
-        }, ipAddress);
+        if (!result.success) {
+            throw new BadRequestError(result.error || 'Failed to provision instance');
+        }
 
         sendCreated(res, {
-            containerId: result.containerId,
             instanceUrl: result.instanceUrl,
-            status: result.status,
+            status: 'provisioned',
         }, 'n8n instance provisioned successfully');
     } catch (error) {
         next(error);
@@ -64,7 +64,7 @@ export async function getInstanceStatus(
             throw new BadRequestError('User not authenticated');
         }
 
-        const status = await dockerService.getInstanceStatus(req.user.id);
+        const status = await provisioningService.getInstanceStatus(req.user.id);
 
         if (!status) {
             sendSuccess(res, { hasInstance: false }, 'No instance found');
@@ -81,10 +81,10 @@ export async function getInstanceStatus(
 }
 
 /**
- * POST /api/instance/start
- * Start the user's n8n instance
+ * POST /api/instance/resume
+ * Resume a suspended n8n instance
  */
-export async function startInstance(
+export async function resumeInstance(
     req: Request,
     res: Response,
     next: NextFunction
@@ -94,131 +94,153 @@ export async function startInstance(
             throw new BadRequestError('User not authenticated');
         }
 
-        const ipAddress = req.ip || req.socket.remoteAddress;
-        const result = await dockerService.startInstance(req.user.id, ipAddress);
+        // Check if user has an active subscription
+        const subscription = await prisma.subscription.findFirst({
+            where: {
+                userId: req.user.id,
+                status: 'active',
+            },
+        });
 
-        sendSuccess(res, result, 'Instance started successfully');
-    } catch (error) {
-        next(error);
-    }
-}
-
-/**
- * POST /api/instance/stop
- * Stop the user's n8n instance
- */
-export async function stopInstance(
-    req: Request,
-    res: Response,
-    next: NextFunction
-): Promise<void> {
-    try {
-        if (!req.user) {
-            throw new BadRequestError('User not authenticated');
+        if (!subscription) {
+            throw new BadRequestError('Active subscription required to resume instance');
         }
 
-        const ipAddress = req.ip || req.socket.remoteAddress;
-        await dockerService.stopInstance(req.user.id, ipAddress);
+        const result = await provisioningService.resumeInstance(req.user.id);
 
-        sendSuccess(res, { status: 'stopped' }, 'Instance stopped successfully');
-    } catch (error) {
-        next(error);
-    }
-}
-
-/**
- * POST /api/instance/restart
- * Restart the user's n8n instance
- */
-export async function restartInstance(
-    req: Request,
-    res: Response,
-    next: NextFunction
-): Promise<void> {
-    try {
-        if (!req.user) {
-            throw new BadRequestError('User not authenticated');
+        if (!result.success) {
+            throw new BadRequestError(result.error || 'Failed to resume instance');
         }
 
-        const ipAddress = req.ip || req.socket.remoteAddress;
-        const result = await dockerService.restartInstance(req.user.id, ipAddress);
-
-        sendSuccess(res, result, 'Instance restarted successfully');
+        sendSuccess(res, {
+            instanceUrl: result.instanceUrl,
+            status: 'active',
+        }, 'Instance resumed successfully');
     } catch (error) {
         next(error);
     }
 }
 
+// ===================================
+// Admin Functions
+// ===================================
+
 /**
- * GET /api/instance/logs
- * Get instance logs
+ * GET /api/instance/admin/list
+ * Admin: Get all n8n instances with pagination
  */
-export async function getInstanceLogs(
+export async function adminGetAllInstances(
     req: Request,
     res: Response,
     next: NextFunction
 ): Promise<void> {
     try {
-        if (!req.user) {
-            throw new BadRequestError('User not authenticated');
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 20;
+        const status = req.query.status as string;
+        const search = req.query.search as string;
+
+        const skip = (page - 1) * limit;
+
+        // Build where clause
+        const where: Record<string, unknown> = {};
+
+        if (status) {
+            where.status = status;
         }
 
-        const lines = req.query.lines ? parseInt(req.query.lines as string) : 100;
-        const logs = await dockerService.getInstanceLogs(req.user.id, lines);
+        if (search) {
+            where.OR = [
+                { subdomain: { contains: search } },
+                { user: { email: { contains: search } } },
+                { user: { fullName: { contains: search } } },
+            ];
+        }
 
-        sendSuccess(res, { logs }, 'Instance logs retrieved');
+        const [instances, total] = await Promise.all([
+            prisma.n8nInstance.findMany({
+                where,
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            email: true,
+                            fullName: true,
+                        },
+                    },
+                },
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip,
+            }),
+            prisma.n8nInstance.count({ where }),
+        ]);
+
+        // Add instanceUrl to each instance
+        const instancesWithUrl = instances.map((instance) => ({
+            ...instance,
+            instanceUrl: instance.status !== 'deleted'
+                ? `https://${instance.subdomain}.${process.env.N8N_DOMAIN || 'n8n.speak25.online'}`
+                : null,
+        }));
+
+        sendSuccess(res, {
+            instances: instancesWithUrl,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+            },
+        }, 'Instances retrieved');
     } catch (error) {
         next(error);
     }
 }
 
-// Admin functions
-
 /**
- * POST /api/instance/admin/:userId/provision
- * Admin provision an instance for a user
+ * GET /api/instance/admin/stats
+ * Admin: Get instance statistics
  */
-export async function adminProvisionInstance(
-    req: Request,
+export async function adminGetInstanceStats(
+    _req: Request,
     res: Response,
     next: NextFunction
 ): Promise<void> {
     try {
-        const { userId } = req.params;
-        const ipAddress = req.ip || req.socket.remoteAddress;
+        const [
+            total,
+            active,
+            suspended,
+            provisioning,
+            error,
+            deleted,
+        ] = await Promise.all([
+            prisma.n8nInstance.count(),
+            prisma.n8nInstance.count({ where: { status: 'active' } }),
+            prisma.n8nInstance.count({ where: { status: 'suspended' } }),
+            prisma.n8nInstance.count({ where: { status: 'provisioning' } }),
+            prisma.n8nInstance.count({ where: { status: 'error' } }),
+            prisma.n8nInstance.count({ where: { status: 'deleted' } }),
+        ]);
 
-        const result = await dockerService.provisionInstance({ userId }, ipAddress);
-
-        sendCreated(res, result, 'Instance provisioned for user');
+        sendSuccess(res, {
+            total,
+            active,
+            suspended,
+            provisioning,
+            error,
+            deleted,
+            running: active, // Alias for dashboard
+        }, 'Instance statistics retrieved');
     } catch (error) {
         next(error);
     }
 }
 
 /**
- * DELETE /api/instance/admin/:userId
- * Admin destroy a user's instance
- */
-export async function adminDestroyInstance(
-    req: Request,
-    res: Response,
-    next: NextFunction
-): Promise<void> {
-    try {
-        const { userId } = req.params;
-        const ipAddress = req.ip || req.socket.remoteAddress;
-
-        await dockerService.destroyInstance(userId, ipAddress);
-
-        sendSuccess(res, { destroyed: true }, 'Instance destroyed');
-    } catch (error) {
-        next(error);
-    }
-}
-
-/**
- * GET /api/instance/admin/:userId/status
- * Admin get a user's instance status
+ * GET /api/instance/admin/:userId
+ * Admin: Get a user's instance details
  */
 export async function adminGetInstanceStatus(
     req: Request,
@@ -228,17 +250,170 @@ export async function adminGetInstanceStatus(
     try {
         const { userId } = req.params;
 
-        const status = await dockerService.getInstanceStatus(userId);
+        const instance = await prisma.n8nInstance.findUnique({
+            where: { userId },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        email: true,
+                        fullName: true,
+                    },
+                },
+                provisioningLogs: {
+                    orderBy: { startedAt: 'desc' },
+                    take: 10,
+                },
+            },
+        });
 
-        if (!status) {
+        if (!instance) {
             sendSuccess(res, { hasInstance: false }, 'No instance found');
             return;
         }
 
         sendSuccess(res, {
             hasInstance: true,
-            ...status,
+            ...instance,
+            instanceUrl: instance.status !== 'deleted'
+                ? `https://${instance.subdomain}.${process.env.N8N_DOMAIN || 'n8n.speak25.online'}`
+                : null,
         }, 'Instance status retrieved');
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
+ * POST /api/instance/admin/:userId/provision
+ * Admin: Provision an instance for a user
+ */
+export async function adminProvisionInstance(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const { userId } = req.params;
+
+        logger.info(`Admin provisioning instance for user ${userId}`);
+
+        const result = await provisioningService.provisionInstance(userId);
+
+        if (!result.success) {
+            throw new BadRequestError(result.error || 'Failed to provision instance');
+        }
+
+        sendCreated(res, {
+            instanceUrl: result.instanceUrl,
+            status: 'provisioned',
+        }, 'Instance provisioned for user');
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
+ * POST /api/instance/admin/:userId/suspend
+ * Admin: Suspend a user's instance
+ */
+export async function adminSuspendInstance(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const { userId } = req.params;
+
+        logger.info(`Admin suspending instance for user ${userId}`);
+
+        const result = await provisioningService.suspendInstance(userId);
+
+        if (!result.success) {
+            throw new BadRequestError(result.error || 'Failed to suspend instance');
+        }
+
+        sendSuccess(res, { status: 'suspended' }, 'Instance suspended');
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
+ * POST /api/instance/admin/:userId/resume
+ * Admin: Resume a user's suspended instance
+ */
+export async function adminResumeInstance(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const { userId } = req.params;
+
+        logger.info(`Admin resuming instance for user ${userId}`);
+
+        const result = await provisioningService.resumeInstance(userId);
+
+        if (!result.success) {
+            throw new BadRequestError(result.error || 'Failed to resume instance');
+        }
+
+        sendSuccess(res, {
+            instanceUrl: result.instanceUrl,
+            status: 'active',
+        }, 'Instance resumed');
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
+ * DELETE /api/instance/admin/:userId
+ * Admin: Delete a user's instance
+ */
+export async function adminDeleteInstance(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const { userId } = req.params;
+
+        logger.info(`Admin deleting instance for user ${userId}`);
+
+        const result = await provisioningService.deleteInstance(userId);
+
+        if (!result.success) {
+            throw new BadRequestError(result.error || 'Failed to delete instance');
+        }
+
+        sendSuccess(res, { status: 'deleted' }, 'Instance deleted');
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
+ * GET /api/instance/admin/:instanceId/logs
+ * Admin: Get provisioning logs for an instance
+ */
+export async function adminGetInstanceLogs(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const { instanceId } = req.params;
+        const limit = parseInt(req.query.limit as string) || 50;
+
+        const logs = await prisma.provisioningLog.findMany({
+            where: { instanceId },
+            orderBy: { startedAt: 'desc' },
+            take: limit,
+        });
+
+        sendSuccess(res, { logs }, 'Provisioning logs retrieved');
     } catch (error) {
         next(error);
     }
