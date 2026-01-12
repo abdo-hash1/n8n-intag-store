@@ -26,6 +26,17 @@ const nextConfig = {
         defaultLocale: 'ar',
         localeDetection: false,
     },
+
+    // URL redirects
+    async redirects() {
+        return [
+            {
+                source: '/register',
+                destination: '/signup',
+                permanent: true,
+            },
+        ];
+    },
 };
 
 module.exports = nextConfig;
