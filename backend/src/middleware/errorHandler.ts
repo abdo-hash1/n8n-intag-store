@@ -14,7 +14,7 @@ import { AppError, ValidationError, ValidationErrorDetail, sendError } from '../
  */
 export function notFoundHandler(
     req: Request,
-    res: Response,
+    _res: Response,
     next: NextFunction
 ): void {
     const error = new AppError(

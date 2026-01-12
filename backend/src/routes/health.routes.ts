@@ -13,7 +13,7 @@ const router = Router();
  * @desc    Basic health check
  * @access  Public
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (_req: Request, res: Response) => {
     res.json({
         success: true,
         message: 'API is running',
@@ -27,7 +27,7 @@ router.get('/', async (req: Request, res: Response) => {
  * @desc    Database connection health check
  * @access  Public
  */
-router.get('/db', async (req: Request, res: Response) => {
+router.get('/db', async (_req: Request, res: Response) => {
     try {
         // Test database connection
         await prisma.$queryRaw`SELECT 1`;
@@ -51,7 +51,7 @@ router.get('/db', async (req: Request, res: Response) => {
  * @desc    Detailed health check (for monitoring)
  * @access  Public
  */
-router.get('/detailed', async (req: Request, res: Response) => {
+router.get('/detailed', async (_req: Request, res: Response) => {
     const checks: {
         name: string;
         status: 'healthy' | 'unhealthy';

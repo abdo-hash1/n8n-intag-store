@@ -12,7 +12,7 @@ import { sendSuccess, sendPaginatedSuccess, BadRequestError } from '../utils/ind
  * Get dashboard statistics
  */
 export async function getDashboard(
-    req: Request,
+    _req: Request,
     res: Response,
     next: NextFunction
 ): Promise<void> {
@@ -194,7 +194,7 @@ export async function getSubscriptions(
  * Get subscription statistics
  */
 export async function getSubscriptionStats(
-    req: Request,
+    _req: Request,
     res: Response,
     next: NextFunction
 ): Promise<void> {
@@ -352,7 +352,7 @@ export async function getTickets(
  * Get ticket statistics
  */
 export async function getTicketStats(
-    req: Request,
+    _req: Request,
     res: Response,
     next: NextFunction
 ): Promise<void> {
@@ -387,7 +387,7 @@ export async function getActivity(
  * Get system settings
  */
 export async function getSettings(
-    req: Request,
+    _req: Request,
     res: Response,
     next: NextFunction
 ): Promise<void> {

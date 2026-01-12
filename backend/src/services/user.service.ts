@@ -37,7 +37,6 @@ class UserService {
                 phone: true,
                 role: true,
                 status: true,
-                instanceUrl: true,
                 createdAt: true,
                 lastLoginAt: true,
                 emailNotifications: true,
@@ -69,7 +68,6 @@ class UserService {
                 phone: true,
                 role: true,
                 status: true,
-                instanceUrl: true,
                 createdAt: true,
                 lastLoginAt: true,
                 emailNotifications: true,
@@ -160,7 +158,7 @@ class UserService {
         await activityLogService.log({
             userId,
             action: 'preferences_updated',
-            details: data,
+            details: data as Record<string, unknown>,
             ipAddress,
         });
 

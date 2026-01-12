@@ -5,7 +5,6 @@
 
 import rateLimit from 'express-rate-limit';
 import { config } from '../config/index.js';
-import { RateLimitError } from '../utils/index.js';
 
 /**
  * Default rate limiter
@@ -20,7 +19,7 @@ export const defaultRateLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
-    handler: (req, res) => {
+    handler: (_req, res) => {
         res.status(429).json({
             success: false,
             message: 'Too many requests, please try again later',
@@ -43,7 +42,7 @@ export const adminRateLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     skip: () => config.isDevelopment, // Skip rate limiting in development
-    handler: (req, res) => {
+    handler: (_req, res) => {
         res.status(429).json({
             success: false,
             message: 'Too many admin requests, please try again later',
@@ -70,7 +69,7 @@ export const authRateLimiter = rateLimit({
         const email = req.body?.email || '';
         return `${req.ip}-${email}`;
     },
-    handler: (req, res) => {
+    handler: (_req, res) => {
         res.status(429).json({
             success: false,
             message: 'Too many login attempts, please try again in 15 minutes',
@@ -93,7 +92,7 @@ export const signupRateLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     skip: () => config.isDevelopment, // Skip rate limiting in development
-    handler: (req, res) => {
+    handler: (_req, res) => {
         res.status(429).json({
             success: false,
             message: 'Too many signup attempts, please try again later',
@@ -115,7 +114,7 @@ export const passwordResetRateLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
-    handler: (req, res) => {
+    handler: (_req, res) => {
         res.status(429).json({
             success: false,
             message: 'Too many password reset requests, please try again later',
@@ -137,7 +136,7 @@ export const paymentRateLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
-    handler: (req, res) => {
+    handler: (_req, res) => {
         res.status(429).json({
             success: false,
             message: 'Too many payment requests, please try again later',

@@ -201,7 +201,7 @@ class AuthService {
      */
     async refreshToken(
         refreshToken: string,
-        ipAddress?: string
+        _ipAddress?: string
     ): Promise<{ accessToken: string; refreshToken: string; expiresIn: string }> {
         // Import here to avoid circular dependency
         const { verifyRefreshToken } = await import('../utils/jwt.js');
@@ -264,7 +264,6 @@ class AuthService {
                 phone: true,
                 role: true,
                 status: true,
-                instanceUrl: true,
                 createdAt: true,
                 lastLoginAt: true,
                 emailNotifications: true,

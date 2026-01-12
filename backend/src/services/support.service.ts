@@ -144,7 +144,7 @@ class SupportService {
     /**
      * Add message to ticket
      */
-    async addMessage(data: AddMessageData, ipAddress?: string) {
+    async addMessage(data: AddMessageData, _ipAddress?: string) {
         const ticket = await prisma.supportTicket.findUnique({
             where: { id: data.ticketId },
         });

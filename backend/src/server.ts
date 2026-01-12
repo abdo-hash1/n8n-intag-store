@@ -44,7 +44,7 @@ app.use(config.server.apiPrefix, defaultRateLimiter);
 
 // Request logging in development
 if (config.isDevelopment) {
-    app.use((req, res, next) => {
+    app.use((req, _res, next) => {
         logger.debug(`${req.method} ${req.path}`, {
             query: req.query,
             body: req.method !== 'GET' ? req.body : undefined,
@@ -61,7 +61,7 @@ if (config.isDevelopment) {
 app.use(config.server.apiPrefix, routes);
 
 // Root endpoint
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
     res.json({
         success: true,
         message: 'n8n SaaS Platform API',

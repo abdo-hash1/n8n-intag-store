@@ -35,7 +35,7 @@ declare global {
  */
 export async function authenticate(
     req: Request,
-    res: Response,
+    _res: Response,
     next: NextFunction
 ): Promise<void> {
     try {
@@ -98,7 +98,7 @@ export async function authenticate(
  */
 export async function optionalAuth(
     req: Request,
-    res: Response,
+    _res: Response,
     next: NextFunction
 ): Promise<void> {
     try {
@@ -146,7 +146,7 @@ export async function optionalAuth(
  * Must be used after authenticate middleware
  */
 export function requireRole(...allowedRoles: string[]) {
-    return (req: Request, res: Response, next: NextFunction): void => {
+    return (req: Request, _res: Response, next: NextFunction): void => {
         if (!req.user) {
             next(new UnauthorizedError('Authentication required'));
             return;

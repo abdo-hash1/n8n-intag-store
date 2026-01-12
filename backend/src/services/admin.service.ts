@@ -121,7 +121,6 @@ class AdminService {
                     phone: true,
                     role: true,
                     status: true,
-                    instanceUrl: true,
                     createdAt: true,
                     lastLoginAt: true,
                     _count: {
@@ -154,8 +153,6 @@ class AdminService {
                 phone: true,
                 role: true,
                 status: true,
-                instanceUrl: true,
-                containerId: true,
                 emailVerified: true,
                 createdAt: true,
                 lastLoginAt: true,
