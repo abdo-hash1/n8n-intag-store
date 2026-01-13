@@ -101,7 +101,8 @@ networks:
                 where: { userId },
             });
 
-            if (existingInstance && existingInstance.status !== 'deleted') {
+            // Allow reprovisioning if the instance is deleted or in error state
+            if (existingInstance && !['deleted', 'error'].includes(existingInstance.status)) {
                 return {
                     success: false,
                     error: 'User already has an active instance',
